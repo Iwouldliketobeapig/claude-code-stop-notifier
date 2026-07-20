@@ -1,0 +1,17 @@
+{
+  "name": "claude-code-stop-notifier",
+  "version": "1.0.0",
+  "description": "A Claude Code Stop hook that shows a Windows toast notification (project name + your question) when Claude finishes responding.",
+  "keywords": [
+    "claude-code",
+    "claude-code-hook",
+    "stop-hook",
+    "windows",
+    "toast-notification",
+    "powershell"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "test": "powershell -ExecutionPolicy Bypass -File ./test.ps1"
+  }
+}
