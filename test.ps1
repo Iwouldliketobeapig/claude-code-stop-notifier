@@ -17,8 +17,8 @@ if (-not (Test-Path -LiteralPath $notifier)) {
     exit 1
 }
 
-# Use an ASCII path under the repo for the sample transcript so the PS->PS
-# pipe stays ASCII (avoids any console-encoding issues with non-ASCII paths).
+# Sample transcript lives under the repo (test-output/) and is cleaned up
+# afterwards; the pipe itself is switched to UTF-8 below for non-ASCII paths.
 $tmpDir = Join-Path $scriptRoot 'test-output'
 if (-not (Test-Path $tmpDir)) { New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null }
 $transcript = Join-Path $tmpDir 'sample.jsonl'
@@ -28,19 +28,27 @@ $sampleLine = '{"type":"last-prompt","lastPrompt":"Summarize the auth module and
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($transcript, $sampleLine + "`n", $utf8NoBom)
 
-# Sample Stop-hook input. cwd -> project name "demo-app"; transcript_path -> our file.
+# Sample Stop-hook input. cwd = the repo root, so the toast title shows this
+# repo's name and CLICKING the toast jumps to this project's editor window
+# (exercises the click-to-open URL). transcript_path -> our sample file.
 $hook = [PSCustomObject]@{
     session_id       = 'test-session'
     transcript_path  = $transcript
-    cwd              = (Join-Path $tmpDir 'demo-app')
+    cwd              = $scriptRoot
     hook_event_name  = 'Stop'
     stop_hook_active = $false
 }
 $hookJson = $hook | ConvertTo-Json -Compress
 
+# Pipe as UTF-8 so a non-ASCII repo path survives the PS->PS pipe (the
+# notifier decodes stdin as UTF-8; PS 5.1's default $OutputEncoding is ASCII).
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+
+$repoName = Split-Path $scriptRoot -Leaf
 Write-Host "Piping sample hook JSON to notify-complete.ps1..."
-Write-Host "  Expected toast title: Claude Code  -  demo-app"
+Write-Host "  Expected toast title: Claude Code  -  $repoName"
 Write-Host "  Expected toast body:  [checkmark] Summarize the auth module and add unit tests"
+Write-Host "  Click the toast: it should focus this repo's editor window."
 Write-Host ""
 
 $hookJson | powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File $notifier

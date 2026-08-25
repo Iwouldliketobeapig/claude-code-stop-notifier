@@ -12,6 +12,7 @@ Claude Code  -  my-app
 ## Features
 
 - 🔔 Native Windows toast (bottom-right corner) with a sound, on every response completion
+- 🖱️ Jump to the project's VS Code window from the toast - click the "打开项目" button (reliable on all builds) or the toast body (works on most builds), via the `vscode://` URL protocol
 - 📁 Project name in the title, derived from the session's working directory
 - ❓ Your question (not the model's answer) in the body, read from the transcript's `last-prompt` entry
 - 🛡️ Silent failure - never blocks your Claude Code workflow
@@ -24,6 +25,7 @@ Claude Code  -  my-app
 2. The hook receives a JSON object via **stdin** containing `cwd` and `transcript_path`.
 3. The script derives the project name from `cwd`, and reads your last question from the transcript's `last-prompt` entry.
 4. A Windows toast is shown. If the WinRT toast API is unavailable, it falls back to a tray balloon.
+5. The toast is clickable: Windows launches `vscode://file/<cwd>`, and VS Code focuses the window that has the project folder open (or opens a new one). This also works for the toast parked in the notification center. Both the "打开项目" button and the toast body carry the URL - some Windows builds ignore body clicks, hence the explicit button.
 
 ## Requirements
 
@@ -88,6 +90,7 @@ This creates a sample transcript, feeds a mock `Stop` payload to `notify-complet
 
 Open `notify-complete.ps1` and tweak:
 
+- **Editor scheme**: `$editorScheme = 'vscode'` near the top - the URL protocol opened when the toast is clicked. Use `vscode-insiders` for VS Code Insiders, `cursor` for Cursor.
 - **Snippet length**: the line `if ($snippet.Length -gt 150)` - change `150` to your preferred max characters.
 - **Title format**: the line `$title = 'Claude Code  -  ' + $projectName`.
 - **Fallback text** (shown when no question is found): the `$doneLabel` line, built from `[char]` code points.
@@ -100,6 +103,8 @@ Open `notify-complete.ps1` and tweak:
 - **Toast shows but no question (only the fallback text)**: the transcript path couldn't be read, or no `last-prompt` entry was found. This is expected when Claude Code's transcript format differs.
 - **`settings.json` looks reformatted after install**: `install.ps1` rewrites the file as valid JSON - it preserves all keys and values but normalizes indentation. A `.bak` backup is kept.
 - **Garbled text after editing the script**: you introduced non-ASCII bytes into the `.ps1`. Revert to pure ASCII (see Customization).
+- **Clicking the toast does nothing / opens the wrong editor**: use the "打开项目" button - on some Windows builds body-click activation is dropped while button clicks always work. If the button also opens the wrong editor, set `$editorScheme` at the top of `notify-complete.ps1` to match yours (`vscode-insiders`, `cursor`). Click-to-jump only applies to toasts; the rare tray-balloon fallback is not clickable.
+- **VS Code shows a confirmation dialog on click ("An external application wants to open ..." / "外部应用程序想要在...打开...")**: this is VS Code's own protection against external apps opening local paths via `vscode://` links - click Yes/是 to jump. To stop being asked, tick "Allow opening local paths without asking" in that dialog once, or set `"security.promptForLocalFileProtocolHandling": false` in VS Code settings.
 
 ## Uninstall
 
