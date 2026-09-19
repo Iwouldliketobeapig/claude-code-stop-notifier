@@ -4,8 +4,9 @@ $ErrorActionPreference = 'SilentlyContinue'
 # Claude finishes responding. The toast shows the project name (from the
 # session cwd) and the user's question that this response answered (read from
 # the transcript's last "last-prompt" entry, whose path is passed on stdin).
-# Clicking the toast asks Windows to launch <scheme>://file/<cwd>, which the
-# editor's registered URL handler answers by focusing that project's window.
+# Clicking the toast asks Windows to launch <scheme>://file/<cwd> - or
+# <scheme>://file/<workspace file> when the project lives inside a multi-root
+# workspace - which the editor's URL handler answers by focusing that window.
 #
 # IMPORTANT: keep this file PURE ASCII. Windows PowerShell 5.1 reads .ps1
 # files as ANSI (GBK) on Chinese Windows, which corrupts non-ASCII source
@@ -15,8 +16,8 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 # --- Config ---
 # URL scheme used when the toast is clicked: Windows launches
-# <scheme>://file/<project folder>, and the editor's registered protocol
-# handler focuses the window that has that folder open (or opens a new one).
+# <scheme>://file/<project folder or workspace file>, and the editor's
+# registered protocol handler focuses the matching window (or opens a new one).
 # Change to 'vscode-insiders' or 'cursor' if you use those editors.
 $editorScheme = 'vscode'
 
@@ -116,18 +117,76 @@ if ($projectName) {
 $titleXml = [System.Security.SecurityElement]::Escape($title)
 $bodyXml = [System.Security.SecurityElement]::Escape($body)
 
-# --- Click-to-jump URL: <scheme>://file/<project folder> ---
+# --- Multi-root workspace detection ---
+# A VS Code window running a .code-workspace is keyed by the workspace FILE,
+# not by any folder inside it: only <scheme>://file/<workspace file> focuses
+# that window, while <scheme>://file/<folder> reopens the folder standalone.
+# So when the project dir is covered by a .code-workspace file (found by
+# walking up from the project dir), target the workspace file instead.
+function Get-NormalizedDirPath {
+    param([string]$Path)
+    if (-not $Path) { return '' }
+    $p = $Path -replace '/', '\'
+    try { $p = [System.IO.Path]::GetFullPath($p) } catch { }
+    return $p.TrimEnd('\').ToLowerInvariant()
+}
+
+function Test-WorkspaceCoversDir {
+    param([string]$WorkspaceFile, [string]$Dir)
+    # .code-workspace files are JSONC (comments allowed), so rather than
+    # parsing JSON, pull every "path": "..." value out with a regex - enough
+    # for a folders-membership check.
+    $text = ''
+    try { $text = [System.IO.File]::ReadAllText($WorkspaceFile, [System.Text.Encoding]::UTF8) } catch { return $false }
+    if (-not $text) { return $false }
+    $wsDir = Split-Path -Parent $WorkspaceFile
+    $target = Get-NormalizedDirPath $Dir
+    foreach ($m in [regex]::Matches($text, '"path"\s*:\s*"((?:[^"\\]|\\.)*)"')) {
+        # Unescape the JSON string forms that can appear in paths.
+        $p = $m.Groups[1].Value -replace '\\\\', '\' -replace '\\/', '/'
+        # Entries may be relative to the workspace file's own directory.
+        if ($p -notmatch '^([a-zA-Z]:[\\/]|\\\\)') { $p = Join-Path $wsDir $p }
+        $p = Get-NormalizedDirPath $p
+        if ($p -and ($target -eq $p -or $target.StartsWith($p + '\'))) { return $true }
+    }
+    return $false
+}
+
+$workspaceFile = ''
+if ($projectDir) {
+    $dir = $projectDir.TrimEnd('\')
+    for ($i = 0; $i -lt 8 -and $dir -and -not $workspaceFile; $i++) {
+        foreach ($f in @(Get-ChildItem -LiteralPath $dir -Filter '*.code-workspace' -File)) {
+            # VS Code's own check is case-sensitive, so keep the same semantics.
+            if ($f.Extension -ceq '.code-workspace' -and (Test-WorkspaceCoversDir $f.FullName $projectDir)) {
+                $workspaceFile = $f.FullName
+                break
+            }
+        }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+}
+
+# --- Click-to-jump URL: <scheme>://file/<project folder or workspace file> ---
 # Use forward slashes and keep ':' and '/' literal (the encodeURI-style form
 # VS Code's own links use); EscapeUriString covers spaces, Chinese and other
 # unsafe chars as UTF-8 percent-escapes. '#' and '?' would cut the URL short
 # (fragment/query), so escape those two by hand afterwards.
 $launchUrl = ''
-if ($projectDir) {
-    $p = $projectDir -replace '\\', '/'
+$launchTarget = $projectDir
+if ($workspaceFile) { $launchTarget = $workspaceFile }
+if ($launchTarget) {
+    $p = $launchTarget -replace '\\', '/'
     $launchUrl = $editorScheme + '://file/' + [Uri]::EscapeUriString($p)
     $launchUrl = $launchUrl -replace '#', '%23' -replace '\?', '%3F'
 }
 $launchXml = [System.Security.SecurityElement]::Escape($launchUrl)
+
+# Test seam: when CCSN_DEBUG_URL is set, print the click URL and exit before
+# showing any toast. test-workspace.ps1 uses this to assert URL selection.
+if ($env:CCSN_DEBUG_URL) { Write-Output $launchUrl; exit 0 }
 
 # --- Show the toast (fallback to a tray balloon if WinRT is unavailable) ---
 try {

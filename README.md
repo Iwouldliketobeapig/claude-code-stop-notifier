@@ -13,6 +13,7 @@ Claude Code  -  my-app
 
 - 🔔 Native Windows toast (bottom-right corner) with a sound, on every response completion
 - 🖱️ Jump to the project's VS Code window from the toast - click the "打开项目" button (reliable on all builds) or the toast body (works on most builds), via the `vscode://` URL protocol
+- 🗂️ Workspace-aware: if the project belongs to a `.code-workspace` (multi-root), the click targets the workspace file so the running workspace window is focused, instead of reopening the folder standalone
 - 📁 Project name in the title, derived from the session's working directory
 - ❓ Your question (not the model's answer) in the body, read from the transcript's `last-prompt` entry
 - 🛡️ Silent failure - never blocks your Claude Code workflow
@@ -26,6 +27,7 @@ Claude Code  -  my-app
 3. The script derives the project name from `cwd`, and reads your last question from the transcript's `last-prompt` entry.
 4. A Windows toast is shown. If the WinRT toast API is unavailable, it falls back to a tray balloon.
 5. The toast is clickable: Windows launches `vscode://file/<cwd>`, and VS Code focuses the window that has the project folder open (or opens a new one). This also works for the toast parked in the notification center. Both the "打开项目" button and the toast body carry the URL - some Windows builds ignore body clicks, hence the explicit button.
+6. Multi-root workspaces: a workspace window is keyed by its `.code-workspace` **file**, not by any folder inside it - a folder URL would reopen the folder standalone. So before building the URL, the script walks up from `cwd` looking for `*.code-workspace` files whose `folders` list covers `cwd` (relative entries are resolved against the workspace file's own directory). If one is found, the click URL targets that workspace file instead, which focuses the running workspace window. If the workspace file lives somewhere not above `cwd`, detection can't find it and the folder URL is used as before.
 
 ## Requirements
 
@@ -85,6 +87,12 @@ powershell -ExecutionPolicy Bypass -File test.ps1
 ```
 
 This creates a sample transcript, feeds a mock `Stop` payload to `notify-complete.ps1`, and pops a toast titled `Claude Code  -  demo-app`. You can also run `npm test`.
+
+There is also an automated, non-interactive suite for the click-URL selection (plain folder vs. `.code-workspace` targeting), using fixture folders under `%TEMP%` - no toast pops:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File test-workspace.ps1   # or: npm run test:unit
+```
 
 ## Customization
 

@@ -12,6 +12,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "test": "powershell -ExecutionPolicy Bypass -File ./test.ps1"
+    "test": "powershell -ExecutionPolicy Bypass -File ./test.ps1",
+    "test:unit": "powershell -ExecutionPolicy Bypass -File ./test-workspace.ps1"
   }
 }
